@@ -50,7 +50,15 @@ def process_video_background(stream_url: str, title: str, audio_count: int):
 
     # ১. ৪টি রেজুলেশনের আলাদা HLS (.m3u8) জেনারেট করা
     print(f"[INFO] [{title}] Generating 1080p, 720p, 480p, 360p HLS Variants...")
-    subprocess.run(f'ffmpeg -y -i "{stream_url}" -vf scale=1920:1080 -c:v libx264 -b:v 5000k -c:a aac -b:a 192k -f hls -hls_time 6 -hls_playlist_type vod "{hls_dir}/1080p.m3u8"', shell=True)
+    result = subprocess.run(
+    f'ffmpeg -y -i "{stream_url}" -vf scale=1920:1080 -c:v libx264 -b:v 5000k -c:a aac -b:a 192k -f hls -hls_time 6 -hls_playlist_type vod "{hls_dir}/1080p.m3u8"',
+    shell=True,
+    capture_output=True,
+    text=True
+)
+
+print("Return code:", result.returncode)
+print(result.stderr)
     subprocess.run(f'ffmpeg -y -i "{stream_url}" -vf scale=1280:720 -c:v libx264 -b:v 2500k -c:a aac -b:a 128k -f hls -hls_time 6 -hls_playlist_type vod "{hls_dir}/720p.m3u8"', shell=True)
     subprocess.run(f'ffmpeg -y -i "{stream_url}" -vf scale=854:480 -c:v libx264 -b:v 1200k -c:a aac -b:a 96k -f hls -hls_time 6 -hls_playlist_type vod "{hls_dir}/480p.m3u8"', shell=True)
     subprocess.run(f'ffmpeg -y -i "{stream_url}" -vf scale=640:360 -c:v libx264 -b:v 800k -c:a aac -b:a 64k -f hls -hls_time 6 -hls_playlist_type vod "{hls_dir}/360p.m3u8"', shell=True)
