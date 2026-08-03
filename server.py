@@ -38,11 +38,12 @@ def process_video_background(stream_url: str, title: str, audio_count: int):
     local_file = os.path.join(title_dir, "source.mp4")
     print("[INFO] Downloading source video...")
 
-    subprocess.run(
-        f'curl -L "{stream_url}" -o "{local_file}"',
-        shell=True,
-        check=True
-    )
+    with requests.get(stream_url, stream=True, timeout=60) as r:
+        r.raise_for_status()
+        with open(local_file, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
 
     print(f"[INFO] Source downloaded: {local_file}")
 
