@@ -28,7 +28,7 @@ def process_video_background(stream_url: str, title: str, audio_count: int):
     title_dir = os.path.join(OUTPUT_DIR, title)
     hls_dir = os.path.join(title_dir, "hls")
     os.makedirs(hls_dir, exist_ok=True) 
- PROCESS_STATUS[title] = {
+PROCESS_STATUS[title] = {
      "status": "processing"
 }
 
