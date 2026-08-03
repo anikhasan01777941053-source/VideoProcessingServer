@@ -3,6 +3,7 @@ from fastapi.staticfiles import StaticFiles
 import subprocess
 import json
 import os
+import requests
 
 app = FastAPI()
 PROCESS_STATUS = {}
@@ -33,6 +34,19 @@ def process_video_background(stream_url: str, title: str, audio_count: int):
 }
     
     print(f"\n[INFO] [{title}] Processing Started: Audio Tracks = {audio_count}")
+    print(f"[INFO] Testing URL: {stream_url}")
+
+    try:
+        r = requests.get(stream_url, stream=True, timeout=30)
+
+        print(f"[INFO] HTTP Status: {r.status_code}")
+        print(f"[INFO] Content-Type: {r.headers.get('Content-Type')}")
+        print(f"[INFO] Content-Length: {r.headers.get('Content-Length')}")
+
+        r.close()
+
+    except Exception as e:
+        print(f"[ERROR] Request Failed: {e}")
 
     # ১. ৪টি রেজুলেশনের আলাদা HLS (.m3u8) জেনারেট করা
     print(f"[INFO] [{title}] Generating 1080p, 720p, 480p, 360p HLS Variants...")
