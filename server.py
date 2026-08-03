@@ -6,75 +6,229 @@ import os
 import requests
 
 app = FastAPI()
+
 PROCESS_STATUS = {}
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8000")
+
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-app.mount("/static", StaticFiles(directory=OUTPUT_DIR), name="static")
+app.mount(
+    "/static",
+    StaticFiles(directory=OUTPUT_DIR),
+    name="static"
+)
+
 
 def get_audio_track_count(video_url: str) -> int:
-    cmd = f'ffprobe -v quiet -print_format json -show_streams -select_streams a "{video_url}"'
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    cmd = (
+        f'ffprobe -v quiet '
+        f'-print_format json '
+        f'-show_streams '
+        f'-select_streams a '
+        f'"{video_url}"'
+    )
+
+    result = subprocess.run(
+        cmd,
+        shell=True,
+        capture_output=True,
+        text=True
+    )
+
     try:
         data = json.loads(result.stdout)
         return len(data.get("streams", []))
     except Exception:
         return 1
 
-def process_video_background(stream_url: str, title: str, audio_count: int):
+
+def process_video_background(
+    stream_url: str,
+    title: str,
+    audio_count: int
+):
     title_dir = os.path.join(OUTPUT_DIR, title)
     hls_dir = os.path.join(title_dir, "hls")
-    os.makedirs(hls_dir, exist_ok=True) 
-PROCESS_STATUS[title] = {
-     "status": "processing"
-}
 
-print(f"\n[INFO] [{title}] Processing Started: Audio Tracks = {audio_count}")
-print(f"[INFO] Testing URL: {stream_url}")
+    os.makedirs(title_dir, exist_ok=True)
+    os.makedirs(hls_dir, exist_ok=True)
 
-local_file = os.path.join(title_dir, "source.mp4")
+    PROCESS_STATUS[title] = {
+        "status": "processing"
+    }
 
-print(f"[INFO] Downloading source video...")
+    print(f"[INFO] Processing: {title}")
 
-subprocess.run(
-    f'curl -L "{stream_url}" -o "{local_file}"',
-    shell=True,
-    check=True
-)
+    local_file = os.path.join(title_dir, "source.mp4")
 
-print(f"[INFO] Source downloaded: {local_file}")
+    print("[INFO] Downloading source video...")
 
-try:
-    r = requests.get(stream_url, stream=True, timeout=30)
+    with requests.get(
+        stream_url,
+        stream=True,
+        timeout=(30, 600)
+    ) as r:
 
-    print(f"[INFO] HTTP Status: {r.status_code}")
-    print(f"[INFO] Content-Type: {r.headers.get('Content-Type')}")
-    print(f"[INFO] Content-Length: {r.headers.get('Content-Length')}")
+        r.raise_for_status()
 
-    r.close()
+        with open(local_file, "wb") as f:
 
-except Exception as e:
-    print(f"[ERROR] Request Failed: {e}")
-    
-    # ১. ৪টি রেজুলেশনের আলাদা HLS (.m3u8) জেনারেট করা
-    print(f"[INFO] [{title}] Generating 720p HLS Variant...")
-    result = subprocess.run(
+            for chunk in r.iter_content(1024 * 1024):
 
-    print("Return code:", result.returncode)
-    print(result.stderr)
+                if chunk:
+                    f.write(chunk)
+
+    print("[INFO] Download completed.")
+    print("[INFO] Generating 720p HLS...")
 
     subprocess.run(
-        f'ffmpeg -y -i "{local_file}" -vf scale=1280:720 -c:v libx264 -b:v 2500k -c:a aac -b:a 128k -f hls -hls_time 6 -hls_playlist_type vod "{hls_dir}/720p.m3u8"',
-        shell=True
+        f'ffmpeg -y '
+        f'-i "{local_file}" '
+        f'-vf scale=1280:720 '
+        f'-c:v libx264 '
+        f'-preset veryfast '
+        f'-crf 23 '
+        f'-c:a aac '
+        f'-b:a 128k '
+        f'-f hls '
+        f'-hls_time 6 '
+        f'-hls_playlist_type vod '
+        f'"{hls_dir}/720p.m3u8"',
+        shell=True,
+        check=True
     )
 
-    subprocess.run(
-
-    subprocess.run(
-    # ২. মূল Multi-Variant Master Playlist (master.m3u8) ফাইলটি তৈরি করা
     master_content = """#EXTM3U
 #EXT-X-VERSION:3
-#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080,NAME="1080p"
+#EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720,NAME="720p"
+720p.m3u8
+"""
+
+    with open(os.path.join(hls_dir, "master.m3u8"), "w") as f:
+        f.write(master_content)
+
+    print("[INFO] 720p HLS Created.")
+    fmt = "mkv" if audio_count > 1 else "mp4"
+
+    if audio_count > 1:
+
+        mkv_dir = os.path.join(title_dir, "mkv")
+        os.makedirs(mkv_dir, exist_ok=True)
+
+        subprocess.run(
+            f'ffmpeg -y '
+            f'-i "{local_file}" '
+            f'-map 0:v -map 0:a '
+            f'-vf scale=1280:720 '
+            f'-c:v libx264 '
+            f'-preset veryfast '
+            f'-c:a copy '
+            f'"{mkv_dir}/{title}_720p.mkv"',
+            shell=True,
+            check=True
+        )
+
+    else:
+
+        mp4_dir = os.path.join(title_dir, "mp4")
+        os.makedirs(mp4_dir, exist_ok=True)
+
+        subprocess.run(
+            f'ffmpeg -y '
+            f'-i "{local_file}" '
+            f'-map 0:v:0 -map 0:a:0 '
+            f'-vf scale=1280:720 '
+            f'-c:v libx264 '
+            f'-preset veryfast '
+            f'-c:a aac '
+            f'-b:a 128k '
+            f'"{mp4_dir}/{title}_720p.mp4"',
+            shell=True,
+            check=True
+        )
+
+    base_url = f"{BASE_URL}/static"
+
+    PROCESS_STATUS[title] = {
+        "status": "completed",
+        "download_format": fmt,
+        "hls_stream_link": f"{base_url}/{title}/hls/master.m3u8",
+        "download_links": {
+            "720p": f"{base_url}/{title}/{fmt}/{title}_720p.{fmt}"
+        }
+    }
+    if os.path.exists(local_file):
+        os.remove(local_file)
+
+    print("[SUCCESS] Processing Completed.")
+    
+@app.get("/")
+def home():
+    return {
+        "status": "720p Video Processing Server Running"
+    }
+
+
+@app.get("/api/process")
+def process_video(
+    stream_url: str,
+    title: str,
+    background_tasks: BackgroundTasks
+):
+    try:
+
+        audio_count = get_audio_track_count(stream_url)
+
+        fmt = "mkv" if audio_count > 1 else "mp4"
+
+        background_tasks.add_task(
+            process_video_background,
+            stream_url,
+            title,
+            audio_count
+        )
+
+        base_url = f"{BASE_URL}/static"
+
+        return {
+            "success": True,
+            "title": title,
+            "message": "Processing started",
+            "detected_audio_tracks": audio_count,
+            "download_format": fmt,
+            "hls_stream_link": f"{base_url}/{title}/hls/master.m3u8",
+            "download_links": {
+                "720p": f"{base_url}/{title}/{fmt}/{title}_720p.{fmt}"
+            }
+        }
+
+    except Exception as e:
+
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.get("/api/status")
+def status(title: str):
+    return PROCESS_STATUS.get(
+        title,
+        {
+            "status": "not_found"
+        }
+    )
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "server:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", 8000)),
+        log_level="info"
+    )    
