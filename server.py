@@ -50,7 +50,7 @@ def process_video_background(stream_url: str, title: str, audio_count: int):
 
     # ১. ৪টি রেজুলেশনের আলাদা HLS (.m3u8) জেনারেট করা
     print(f"[INFO] [{title}] Generating 1080p, 720p, 480p, 360p HLS Variants...")
-       result = subprocess.run(
+    result = subprocess.run(
         f'ffmpeg -y -i "{stream_url}" -vf scale=1920:1080 -c:v libx264 -b:v 5000k -c:a aac -b:a 192k -f hls -hls_time 6 -hls_playlist_type vod "{hls_dir}/1080p.m3u8"',
         shell=True,
         capture_output=True,
